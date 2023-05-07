@@ -64,6 +64,7 @@ public:
 
     Status write_block(uint32_t block_index, off_t offset_in_block, const IOBuf& buf) const;
     Status read_block(uint32_t block_index, off_t offset_in_block, size_t size, IOBuf* buf) const;
+    Status read_block(uint32_t block_id, off_t offset_in_block, size_t size, char* data) const;
     Status writev_block(uint32_t block_index, off_t offset_in_block, const std::vector<IOBuf*>& bufv) const;
     Status readv_block(uint32_t block_index, off_t offset_in_block, const std::vector<size_t> sizev,
                        std::vector<IOBuf*>* bufv) const;
@@ -126,6 +127,7 @@ public:
     Status free_block(BlockId block_id);
     Status write_block(BlockId block_id, off_t offset_in_block, const IOBuf& buf) const;
     Status read_block(BlockId block_id, off_t offset_in_block, size_t size, IOBuf* buf) const;
+    Status read_block(BlockId block_id, off_t offset_in_block, size_t size, char* data) const;
     Status writev_block(BlockId block_id, off_t offset_in_block, const std::vector<IOBuf*>& bufv) const;
     Status readv_block(BlockId block_id, off_t offset_in_block, const std::vector<size_t> sizev,
                        std::vector<IOBuf*>* bufv) const;

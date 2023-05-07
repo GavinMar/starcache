@@ -50,6 +50,8 @@ public:
     // The segment contains target block range, and will hold the data read from disk.
     Status read_block(const CacheId& cache_id, DiskBlockPtr block, BlockSegment* segment) const;
 
+    Status read_block(const CacheId& cache_id, DiskBlockPtr block, off_t offset, size_t size, char* data) const;
+
     // Create a new disk block item.
     // If disk space is not enough, return null.
     DiskBlockPtr new_block_item(const CacheId& cache_id) const;
@@ -88,6 +90,7 @@ private:
     void _update_block_checksum(DiskBlockPtr block, const BlockSegment& segment) const;
 
     bool _check_block_checksum(DiskBlockPtr block, const BlockSegment& segment) const;
+    bool _check_block_checksum(DiskBlockPtr block, off_t offset, size_t size, const char* data) const;
 
     DiskSpaceManager* _space_manager = nullptr;
     EvictionPolicy<CacheId>* _eviction_policy = nullptr;

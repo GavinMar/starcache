@@ -81,6 +81,12 @@ Status CacheDir::read_block(uint32_t block_index, off_t offset_in_block, size_t 
     return file->read(offset, size, buf);
 }
 
+Status CacheDir::read_block(uint32_t block_index, off_t offset_in_block, size_t size, char* data) const {
+    BlockFilePtr file = get_block_file(block_index);
+    off_t offset = get_block_file_offset(block_index, offset_in_block);
+    return file->read(offset, size, data);
+}
+
 Status CacheDir::writev_block(uint32_t block_index, off_t offset_in_block, const std::vector<IOBuf*>& bufv) const {
     BlockFilePtr file = get_block_file(block_index);
     off_t offset = get_block_file_offset(block_index, offset_in_block);
@@ -249,6 +255,11 @@ Status DiskSpaceManager::write_block(BlockId block_id, off_t offset_in_block, co
 Status DiskSpaceManager::read_block(BlockId block_id, off_t offset_in_block, size_t size, IOBuf* buf) const {
     auto& dir = _cache_dirs[block_id.dir_index];
     return dir->read_block(block_id.block_index, offset_in_block, size, buf);
+}
+
+Status DiskSpaceManager::read_block(BlockId block_id, off_t offset_in_block, size_t size, char* data) const {
+    auto& dir = _cache_dirs[block_id.dir_index];
+    return dir->read_block(block_id.block_index, offset_in_block, size, data);
 }
 
 Status DiskSpaceManager::writev_block(BlockId block_id, off_t offset_in_block, const std::vector<IOBuf*>& bufv) const {

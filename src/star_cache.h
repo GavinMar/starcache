@@ -47,6 +47,8 @@ public:
     // Only if all the data in the valid range exists in the cache will it return success, otherwise will return ENOENT.
     Status read(const CacheKey& cache_key, off_t offset, size_t size, IOBuf* buf, ReadOptions* options = nullptr);
 
+    Status read(const CacheKey& cache_key, off_t offset, size_t size, char* data, ReadOptions* options = nullptr);
+
     // Remove the cache object.
     // If no such object, return ENOENT error
     Status remove(const CacheKey& cache_key);

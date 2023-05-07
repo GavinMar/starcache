@@ -46,6 +46,10 @@ Status StarCache::read(const CacheKey& cache_key, off_t offset, size_t size, IOB
     return _cache_impl->read(cache_key, offset, size, buf, options);
 }
 
+Status StarCache::read(const CacheKey& cache_key, off_t offset, size_t size, char* data, ReadOptions* options) {
+    return _cache_impl->read(cache_key, offset, size, data, options);
+}
+
 Status StarCache::remove(const CacheKey& cache_key) {
     return _cache_impl->remove(cache_key);
 }

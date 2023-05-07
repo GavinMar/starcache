@@ -81,13 +81,13 @@ check_if_done()
     done_file="${name}_DONE"
 
 	OLD_IFS="$IFS"
-	IFS=";"
-	files=($done_file)
+    IFS=";"
+    files=(${!done_file})
 	IFS="$OLD_IFS"
 
 	for file in ${files[@]}
 	do
-        if test -f "$installprefix/${!file}"
+        if test -f "$installprefix/${file}"
         then
             return 0
         fi

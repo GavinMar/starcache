@@ -35,6 +35,7 @@ public:
 
     Status write(off_t offset, const IOBuf& buf);
     Status read(off_t offset, size_t size, IOBuf* buf);
+    Status read(off_t offset, size_t size, char* data);
     Status writev(off_t offset, const std::vector<IOBuf*>& bufv);
     Status readv(off_t offset, const std::vector<size_t>& sizev, std::vector<IOBuf*>* bufv);
 

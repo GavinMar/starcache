@@ -317,6 +317,132 @@ Status StarCacheImpl::_read_block(CacheItemPtr cache_item, const BlockKey& block
     return Status::OK();
 }
 
+Status StarCacheImpl::read(const CacheKey& cache_key, off_t offset, size_t size, char* data, ReadOptions* options) {
+    STAR_VLOG << "read cache, cache_key: " << cache_key << ", offset: " << offset << ", size: " << size;
+    if (options) {
+        STAR_VLOG << " options: " << *options;
+    }
+    if (!data) {
+        LOG(WARNING) << "data buffer should not be null";
+        return Status(EINVAL, "Invalid data buffer");
+    }
+    auto cache_id = cachekey2id(cache_key);
+    auto cache_item = _access_index->find(cache_id);
+    if (!cache_item || cache_item->cache_key != cache_key || cache_item->is_released()) {
+        return Status(ENOENT, "The target not found");
+    }
+    Status st =  _read_cache_item(cache_id, cache_item, offset, size, data, options);
+    STAR_VLOG << "read cache finish, cache_key: " << cache_key << ", offset:" << offset << ", size: " << size
+              << ", buf_size: " << size << ", status: " << st.error_str();
+    return st;
+}
+
+Status StarCacheImpl::_read_cache_item(const CacheId& cache_id, CacheItemPtr cache_item, off_t offset, size_t size,
+                                       char* data, ReadOptions* options) {
+    if (offset + size > cache_item->size) {
+        size = offset >= cache_item->size ? 0 : cache_item->size - offset;
+    }
+    if (size == 0) {
+        return Status::OK();
+    }
+
+    // Align read range by slices
+    // TODO: We have no need to align read range if for segments from mem cache,
+    // but as the operation is zero copy, so it seems doesn't matter.
+    off_t lower = slice_lower(off2slice(offset));
+    off_t upper = slice_upper(off2slice(offset + size - 1));
+    if (upper >= cache_item->size) {
+        upper = cache_item->size - 1;
+    }
+    size_t aligned_size = upper - lower + 1;
+    int start_block_index = off2block(lower);
+    int end_block_index = off2block(upper);
+
+    // Read range is aligned
+    if ((offset == lower && size == aligned_size) || (options && options->mode == ReadOptions::ReadMode::READ_THROUGH &&
+                                                      config::FLAGS_enable_os_page_cache)) {
+        lower = offset;
+        upper = offset + size - 1;
+        size_t read_bytes = 0;
+        for (uint32_t i = start_block_index; i <= end_block_index; ++i) {
+            off_t blk_lower = block_lower(i);
+            off_t off_in_block = i == start_block_index ? lower - blk_lower : 0;
+            size_t to_read = i == end_block_index ? upper - (blk_lower + off_in_block) + 1
+                                                  : config::FLAGS_block_size - off_in_block;
+            RETURN_IF_ERROR(_read_block(cache_item, {cache_id, i}, off_in_block, to_read, data + read_bytes, options));
+            read_bytes += to_read;
+        }
+        return Status::OK();
+    }
+
+    CHECK(false);
+
+    IOBuf buf;
+    for (uint32_t i = start_block_index; i <= end_block_index; ++i) {
+        IOBuf block_buf;
+        off_t off_in_block = i == start_block_index ? lower - block_lower(i) : 0;
+        size_t to_read = i == end_block_index ? upper - (block_lower(i) + off_in_block) + 1
+                                              : config::FLAGS_block_size - off_in_block;
+        RETURN_IF_ERROR(_read_block(cache_item, {cache_id, i}, off_in_block, to_read, &block_buf, options));
+        aligned_size -= to_read;
+        buf.append(block_buf);
+    }
+    buf.copy_to(data, size, offset - lower);
+    return Status::OK();
+}
+
+Status StarCacheImpl::_read_block(CacheItemPtr cache_item, const BlockKey& block_key, off_t offset, size_t size,
+                                  char* data, ReadOptions* options) {
+    BlockItem& block = cache_item->blocks[block_key.block_index];
+    std::vector<BlockSegment> segments;
+    std::vector<BlockSegment> disk_segments;
+    //auto rlck = block_shared_lock(block_key);
+    //rlck.lock();
+    auto mem_block = block.mem_block();
+    auto disk_block = block.disk_block();
+    _mem_cache->read_block(block_key, mem_block, offset, size, &segments);
+    off_t cursor = offset;
+
+    bool hole_exist = false;
+    size_t read_bytes= 0;
+    for (auto& seg : segments) {
+        if (seg.offset > cursor) {
+            if (!disk_block) {
+                hole_exist = true;
+                break;
+            }
+            size_t to_read = seg.offset - cursor;
+            RETURN_IF_ERROR(_disk_cache->read_block(block_key.cache_id, disk_block, cursor, to_read, data + read_bytes));
+            disk_segments.emplace_back(cursor, to_read);
+            read_bytes += to_read;
+        }
+        cursor = seg.offset + seg.buf.size();
+        read_bytes += seg.buf.size();
+    }
+    if (disk_block && read_bytes < size) {
+        size_t to_read = size - read_bytes;
+        RETURN_IF_ERROR(_disk_cache->read_block(block_key.cache_id, disk_block, cursor, to_read, data + read_bytes));
+        disk_segments.emplace_back(cursor, to_read);
+        read_bytes += to_read;
+    }
+    //rlck.unlock();
+
+    if (read_bytes < size || hole_exist) {
+        STAR_VLOG << "can not read full block from cache, cache_key: " << cache_item->cache_key
+                  << ", expect size: " << size << ", real size: " << read_bytes;
+        return Status(ENOENT, "can not read full block from cache");
+    }
+
+    // TODO: The follow procedure can be done asynchronously
+    if (!disk_segments.empty() && _promotion_policy->check_promote(cache_item, block_key, options)) {
+        for (auto& seg : disk_segments) {
+            seg.buf.append(data + seg.offset - offset, seg.size);
+        }
+        _promote_block_segments(cache_item, block_key, disk_segments);
+    }
+    return Status::OK();
+}
+
 Status StarCacheImpl::remove(const CacheKey& cache_key) {
     STAR_VLOG << "remove cache, cache_key: " << cache_key;
     auto cache_id = cachekey2id(cache_key);

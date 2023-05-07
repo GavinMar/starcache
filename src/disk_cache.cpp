@@ -14,6 +14,7 @@
 
 #include "disk_cache.h"
 
+#include <butil/crc32c.h>
 #include <butil/fast_rand.h>
 #include <glog/logging.h>
 
@@ -81,6 +82,25 @@ Status DiskCache::read_block(const CacheId& cache_id, DiskBlockPtr block, BlockS
     return Status::OK();
 }
 
+Status DiskCache::read_block(const CacheId& cache_id, DiskBlockPtr block, off_t offset, size_t size,
+                             char* data) const {
+    if (_space_manager->quota_bytes() == 0) {
+        return Status(ENOENT, "disk cache is not exist");
+    }
+    // Use a local scope to release the handle early
+    {
+        auto handle = evict_touch(cache_id, false);
+    }
+
+    Status st = _space_manager->read_block({block->dir_index, block->block_index}, offset, size, data);
+    RETURN_IF_ERROR(st);
+
+    if (UNLIKELY(config::FLAGS_enable_disk_checksum && !_check_block_checksum(block, offset, size, data))) {
+        return Status(E_INTERNAL, "fail to verify checksum for cache: %lu", cache_id);
+    }
+    return Status::OK();
+}
+
 void DiskCache::_update_block_checksum(DiskBlockPtr block, const BlockSegment& segment) const {
     const uint32_t slice_size = config::FLAGS_slice_size;
     for (off_t off = 0; off < segment.size; off += slice_size) {
@@ -106,6 +126,23 @@ bool DiskCache::_check_block_checksum(DiskBlockPtr block, const BlockSegment& se
             LOG(ERROR) << "fail to check checksum for block: " << block.get() << ", slice index: " << index
                        << ", expected: " << block->checksums[index] << ", real: " << crc32_iobuf(slice_buf)
                        << ", buf size: " << slice_buf.size() << ", head char: " << slice_buf.to_string()[0]
+                       << ", file block index: " << block->block_index;
+            return false;
+        }
+    }
+    return true;
+}
+
+bool DiskCache::_check_block_checksum(DiskBlockPtr block, off_t offset, size_t size, const char* data) const {
+    const uint32_t slice_size = config::FLAGS_slice_size;
+    for (off_t off = 0; off < size; off += slice_size) {
+        int index = off2slice(offset + off);
+        size_t check_size = std::min(slice_size, static_cast<uint32_t>(size - off));
+        uint32_t hash = butil::crc32c::Value(data + off, check_size);
+        if (block->checksums[index] != hash) {
+            LOG(ERROR) << "fail to check checksum for block: " << block.get() << ", slice index: " << index
+                       << ", expected: " << block->checksums[index] << ", real: " << hash
+                       << ", buf size: " << check_size << ", head char: " << data[off]
                        << ", file block index: " << block->block_index;
             return false;
         }

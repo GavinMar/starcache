@@ -717,6 +717,44 @@ TEST_F(StarCacheTest, read_segments_with_hole) {
     ASSERT_EQ(st.error_code(), ENOENT) << st.error_str();
 }
 
+TEST_F(StarCacheTest, read_with_raw_buffer) {
+    CONFIG_UPDATE(uint32_t, config::FLAGS_lru_container_shard_bits, 0);
+    // To make sure all flush process will be skipped
+    CONFIG_UPDATE(uint32_t, config::FLAGS_promotion_probalility, 0);
+    CONFIG_UPDATE(uint64_t, config::FLAGS_promotion_mem_threshold, 0);
+    CONFIG_UPDATE(bool, config::FLAGS_enable_disk_checksum, false);
+    CONFIG_UPDATE(bool, config::FLAGS_enable_os_page_cache, true);
+    auto cache = create_simple_cache(10 * MB, 25 * MB);
+
+    const size_t obj_size = 4 * MB + 123;
+    const size_t rounds = 5;
+    const std::string cache_key = "test_file";
+    Status st;
+
+    // write cache
+    for (size_t i = 0; i < rounds; ++i) {
+        char ch = 'a' + i;
+        IOBuf wbuf = gen_iobuf(obj_size, ch);
+        st = cache->set(cache_key + std::to_string(i), wbuf);
+        ASSERT_TRUE(st.ok()) << st.error_str();
+    }
+
+    const size_t data_size = obj_size - 200;
+    char* data = new char[data_size];
+    char* expect_data = new char[data_size];
+    ReadOptions options;
+    options.mode = ReadOptions::ReadMode::READ_THROUGH;
+    for (size_t i = 0; i < rounds; ++i) {
+        st = cache->read(cache_key + std::to_string(i), 100, data_size, data, &options);
+        ASSERT_TRUE(st.ok()) << st.error_str();
+        char ch = 'a' + i;
+        memset(expect_data, ch, data_size);
+        ASSERT_EQ(memcmp(data, expect_data, data_size), 0);
+    }
+    delete[] data;
+    delete[] expect_data;
+}
+
 } // namespace starrocks::starcache
 
 int main(int argc, char** argv) {

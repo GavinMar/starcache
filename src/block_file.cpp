@@ -116,6 +116,16 @@ Status BlockFile::read(off_t offset, size_t size, IOBuf* buf) {
     return Status::OK();
 }
 
+Status BlockFile::read(off_t offset, size_t size, char* data) {
+    int ret = ::pread(_fd, data, size, offset);
+    if (ret < 0) {
+        return _report_io_error("fail to read block file");
+    }
+    STAR_VLOG << "read block file, fd: " << _fd << ", path: " << _file_path << ", offset: " << offset
+              << ", size: " << size;
+    return Status::OK();
+}
+
 Status BlockFile::writev(off_t offset, const std::vector<IOBuf*>& bufv) {
     // NOTICE: This function has not been used now
     ssize_t ret = 0;

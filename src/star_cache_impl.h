@@ -38,6 +38,8 @@ public:
 
     Status read(const CacheKey& cache_key, off_t offset, size_t size, IOBuf* buf, ReadOptions* options);
 
+    Status read(const CacheKey& cache_key, off_t offset, size_t size, char* data, ReadOptions* options);
+
     Status remove(const CacheKey& cache_key);
 
     Status pin(const CacheKey& cache_key);
@@ -56,6 +58,8 @@ private:
                              WriteOptions* options);
     Status _read_cache_item(const CacheId& cache_id, CacheItemPtr cache_item, off_t offset, size_t size, IOBuf* buf,
                             ReadOptions* options);
+    Status _read_cache_item(const CacheId& cache_id, CacheItemPtr cache_item, off_t offset, size_t size,
+                            char* data, ReadOptions* options);
     void _remove_cache_item(const CacheId& cache_id, CacheItemPtr cache_item);
     Status _pin_cache_item(const CacheId& cache_id, CacheItemPtr cache_item);
     Status _unpin_cache_item(const CacheId& cache_id, CacheItemPtr cache_item);
@@ -63,6 +67,8 @@ private:
     Status _write_block(CacheItemPtr cache_item, const BlockKey& block_key, const IOBuf& buf, WriteOptions* options);
     Status _read_block(CacheItemPtr cache_item, const BlockKey& block_key, off_t offset, size_t size, IOBuf* buf,
                        ReadOptions* options);
+    Status _read_block(CacheItemPtr cache_item, const BlockKey& block_key, off_t offset, size_t size,
+                       char* data, ReadOptions* options);
 
     Status _flush_block(CacheItemPtr cache_item, const BlockKey& block_key);
     Status _flush_block_segments(CacheItemPtr cache_item, const BlockKey& block_key,
